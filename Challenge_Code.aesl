@@ -1,0 +1,718 @@
+<!DOCTYPE aesl-source>
+<network>
+
+
+<!--list of global events-->
+<event size="0" name="opened"/>
+<event size="0" name="passed"/>
+<event size="0" name="find_door"/>
+<event size="0" name="find_switch"/>
+
+
+<!--list of constants-->
+<constant value="0" name="FALSE"/>
+<constant value="1" name="TRUE"/>
+<constant value="600" name="S_INIT"/>
+<constant value="1500" name="P_THRESH"/>
+<constant value="10" name="EXPLORER"/>
+<constant value="500" name="DELAY"/>
+<constant value="17" name="FIND_SWITCH"/>
+<constant value="11" name="BASIC_BLUE"/>
+<constant value="18" name="BASIC_RED"/>
+<constant value="12" name="WAITING"/>
+<constant value="19" name="OPENED"/>
+<constant value="14" name="PASS"/>
+<constant value="20" name="STOP_O"/>
+<constant value="13" name="STOP_W"/>
+<constant value="15" name="FIND_DOOR"/>
+<constant value="16" name="BASIC_NO_WAIT"/>
+<constant value="21" name="ROTATE"/>
+<constant value="0" name="STOP_SPEED"/>
+<constant value="400" name="SPEED_FRW"/>
+<constant value="200" name="PASS_FS"/>
+<constant value="100" name="PASS_SL"/>
+<constant value="40" name="COUNTER_MAX"/>
+<constant value="50" name="ROTATION_TIME"/>
+<constant value="100" name="COUNTER2_MAX"/>
+<constant value="10" name="CONFIRMED"/>
+
+
+<!--show keywords state-->
+<keywords flag="true"/>
+
+
+<!--node e-puck 2-->
+<node nodeId="2" name="e-puck 2">var redMean
+var greenMean
+var blueMean  
+var foundBlue = FALSE
+var foundRed= FALSE
+var foundGreen= FALSE
+
+var proxRight
+var proxLeft
+var proxFront
+var ds
+
+var state=EXPLORER
+var smart=FALSE
+var counter=0
+var counter2=0
+var counter3=0
+var rotation_count=0
+var led_count=0
+var time_led_on=0
+var v[3]
+var mean
+
+var zero_on=-80
+var one_out=-80
+var two_out=-80
+var zero_out=-80
+var two_on=-80
+var avg=-70
+
+#basic lover. When stopped change the state
+sub basiclove
+	proxFront = (prox[0]+prox[7])/2
+	call math.muldiv(ds, S_INIT, proxFront, P_THRESH)
+	speed.right = S_INIT - ds
+	speed.left = S_INIT - ds
+	if speed.left==0 and speed.right==0 then
+		if state==BASIC_BLUE then
+			state=WAITING 		
+		elseif state==BASIC_RED then
+			state=OPENED 
+		elseif state==BASIC_NO_WAIT then
+			state=PASS
+		end
+	end	
+
+#turn on leds 5 and 0 alternately and search for red or green
+sub findSwitch
+	if led_count/5==1 then
+		leds[5]=1
+	else
+		leds[0]=1
+	end
+		
+	if time_led_on&lt;3 then
+		time_led_on++
+	else
+		leds[0]=0
+		leds[5]=0
+		led_count++
+		if led_count>=6 then
+			led_count=0
+		end
+		time_led_on=0
+	end
+	if foundRed==TRUE then
+		led_count=0
+		time_led_on=0
+		counter3++
+		if counter3==CONFIRMED then	
+			state=BASIC_RED
+			counter3=0
+		end
+	elseif foundGreen==TRUE then
+		led_count=0
+		time_led_on=0
+		counter3++
+		if counter3==CONFIRMED then	
+			state=OPENED
+			counter3=0
+		end	
+	end
+
+#turn on leds 1,2 and 6,7 alternately and search for blue
+sub findDoor
+	if led_count&lt;=3 then
+		leds[1]=1
+		leds[2]=1
+	else
+		leds[6]=1
+		leds[7]=1
+	end
+	
+	if time_led_on&lt;5 then
+		time_led_on++
+	else
+		leds[1]=0
+		leds[2]=0
+		leds[6]=0
+		leds[7]=0
+		led_count++
+		if led_count+1>=7 then
+			led_count=0
+		end
+		time_led_on=0
+	end
+	if foundBlue==TRUE then
+		led_count=0
+		time_led_on=0
+		counter3++
+		if counter3==CONFIRMED then	
+			state=BASIC_NO_WAIT
+			counter3=0
+		end
+	end
+
+#turn on all leds alternately one by one and search for red, green or blue
+sub findAny
+	leds[led_count]=1
+	if time_led_on&lt;3 then
+		time_led_on++
+	else
+		leds[led_count]=0
+		led_count++
+		if led_count>=7 then
+			led_count=0
+		end
+		time_led_on=0
+	end
+	if foundBlue==TRUE then
+		led_count=0
+		time_led_on=0
+		counter3++
+		if counter3==CONFIRMED then	
+			state=BASIC_BLUE
+			counter3=0
+		end
+	elseif foundRed==TRUE then
+		led_count=0
+		time_led_on=0
+		counter3++
+		if counter3==CONFIRMED then	
+			state=BASIC_RED
+			counter3=0
+		end
+	elseif foundGreen==TRUE then
+		led_count=0
+		time_led_on=0
+		counter3++
+		if counter3==CONFIRMED then	
+			state=OPENED
+			counter3=0
+		end	
+	end
+
+#explore the arena, call corresponding subroutine to find specific color and turn on corresponding leds
+sub explorer
+	if state==FIND_SWITCH then
+		callsub findSwitch
+	elseif state==FIND_DOOR then
+		callsub findDoor
+	else
+		callsub findAny
+	end
+	proxRight = (4*prox[0] + 2*prox[1] + prox[2])/7
+	proxLeft = (4*prox[7] + 2*prox[6] + prox[5])/7	
+	if proxRight > proxLeft then
+		call math.muldiv(ds, S_INIT, proxRight, P_THRESH)
+	   	speed.right = S_INIT + ds
+	   	speed.left = S_INIT - ds
+	else
+		call math.muldiv(ds, S_INIT, proxLeft, P_THRESH)
+		speed.right = S_INIT - ds
+		speed.left = S_INIT + ds
+	end
+		
+sub stop
+	speed.left=STOP_SPEED
+	speed.right=STOP_SPEED
+
+#pass the door using black strip on the floor
+sub pass
+	counter2++
+	#wait until we manually open the door
+	if counter2>=COUNTER2_MAX then
+		mean=(v[0]+v[1]+v[2])/3
+		if v[0]&lt;zero_on and v[1]>one_out and v[2]>two_out then
+			#turn left
+			speed.right=PASS_FS
+			speed.left=PASS_SL
+			counter=0
+		elseif v[0]>zero_out and v[1]>one_out and v[2]&lt;two_on then
+			#turn right
+		 	speed.left=PASS_FS
+		 	speed.right=PASS_SL
+		 	counter=0
+		elseif mean>avg then
+			counter++
+			speed.left=PASS_FS
+			speed.right=PASS_FS
+		else 
+			speed.left=PASS_FS
+			speed.right=PASS_FS
+			counter=0
+		end	
+	end
+	if counter>=COUNTER_MAX then
+		emit passed
+		state=EXPLORER
+		counter=0
+	end
+
+#rotate to avoid detecting the same green switch over and over again
+sub rotate
+	if rotation_count>=ROTATION_TIME then
+		smart=FALSE
+		state=EXPLORER
+		rotation_count=0
+	else
+		speed.left=STOP_SPEED
+		speed.right=SPEED_FRW
+		rotation_count++
+	end
+
+#inform others that they should find a switch
+sub wait_emit
+	emit find_switch
+	state=STOP_W
+
+#inform others that door is opened and that they should find a door
+sub opened_emit
+	emit opened
+	state=STOP_O	
+		
+#search only door	
+onevent find_door
+	if state==EXPLORER then
+		state=FIND_DOOR
+	end
+
+#search only switch
+onevent find_switch
+	if state==EXPLORER then	
+		state=FIND_SWITCH
+	end
+	
+#if waiting for door to be opened then pass, otherwise start searching only the door
+onevent opened
+	if state==STOP_W then
+			counter2=0
+			state=PASS
+	elseif state==EXPLORER then
+		state=FIND_DOOR
+	end	
+
+#if in front of green switch then rotate to avoid detecting it again, otherwise continue exploring the arena			
+onevent passed
+	if state==STOP_O then
+		if smart==TRUE then
+			state=ROTATE
+		else
+			state=EXPLORER
+		end
+	end
+
+#call corresponding subroutine depending on the state
+onevent ir_sensors
+	call ground.get_values(v)
+	if state==EXPLORER or state==FIND_SWITCH or state==FIND_DOOR then
+		callsub explorer
+	elseif state==BASIC_BLUE or state==BASIC_RED or state==BASIC_NO_WAIT then
+		callsub basiclove	
+	elseif state==WAITING then
+		callsub wait_emit
+	elseif state==STOP_W or state==STOP_O then
+		callsub stop
+	elseif state==PASS then
+		callsub pass
+	elseif state==OPENED then
+		callsub opened_emit
+	elseif state==ROTATE then
+		callsub rotate
+	end		
+	
+#color detection
+onevent camera
+	redMean=(cam.red[28]+cam.red[29]+cam.red[30]+cam.red[31]+cam.red[32])/5
+	greenMean=(cam.green[28]+cam.green[29]+cam.green[30]+cam.green[31]+cam.green[32])/5
+	blueMean=(cam.blue[28]+cam.blue[29]+cam.blue[30]+cam.blue[31]+cam.blue[32])/5
+
+	if blueMean>(redMean+greenMean)/2 and (greenMean+blueMean+redMean)/3&lt;20 then
+			foundBlue=TRUE
+			leds[0]=1
+			leds[1]=1
+			leds[2]=0	
+			#reset other leds
+			leds[3]=0
+			leds[4]=0	
+			leds[5]=0
+			leds[6]=0
+			leds[7]=0
+	elseif redMean>(blueMean+greenMean)/2 and (greenMean+blueMean+redMean)/3&lt;20 then
+			foundRed=TRUE
+			leds[0]=1
+			leds[1]=0
+			leds[2]=0
+			#reset other leds
+			leds[3]=0
+			leds[4]=0	
+			leds[5]=0
+			leds[6]=0
+			leds[7]=0
+	elseif greenMean>(blueMean+redMean)/2 and (greenMean+blueMean+redMean)/3&lt;20 then
+			foundGreen=TRUE
+			smart=TRUE
+			leds[0]=1
+			leds[1]=1
+			leds[2]=1
+			#reset other leds
+			leds[3]=0
+			leds[4]=0	
+			leds[5]=0
+			leds[6]=0
+			leds[7]=0
+	elseif (greenMean+blueMean+redMean)/3>20 then
+			foundBlue=FALSE
+			foundGreen=FALSE
+			foundRed=FALSE
+			leds[0]=0
+			leds[1]=0
+			leds[2]=0
+	end</node>
+
+
+<!--node e-puck 3-->
+<node nodeId="3" name="e-puck 3">var redMean
+var greenMean
+var blueMean  
+var foundBlue = FALSE
+var foundRed= FALSE
+var foundGreen= FALSE
+
+var proxRight
+var proxLeft
+var proxFront
+var ds
+
+var state=EXPLORER
+var smart=FALSE
+var counter=0
+var counter2=0
+var counter3=0
+var rotation_count=0
+var led_count=0
+var time_led_on=0
+var v[3]
+var mean
+
+var zero_on=300
+var one_out=-70
+var two_out=-65
+var zero_out=0
+var two_on=-70
+var avg=-50
+
+#basic lover. When stopped change the state
+sub basiclove
+	proxFront = (prox[0]+prox[7])/2
+	call math.muldiv(ds, S_INIT, proxFront, P_THRESH)
+	speed.right = S_INIT - ds
+	speed.left = S_INIT - ds
+	if speed.left==0 and speed.right==0 then
+		if state==BASIC_BLUE then
+			state=WAITING		
+		elseif state==BASIC_RED then
+			state=OPENED
+		elseif state==BASIC_NO_WAIT then
+			state=PASS
+		end
+	end	
+
+#turn on leds 5 and 0 alternately and search for red or green
+sub findSwitch
+	if led_count/5==1 then
+		leds[5]=1
+	else
+		leds[0]=1
+	end
+		
+	if time_led_on&lt;3 then
+		time_led_on++
+	else
+		leds[0]=0
+		leds[5]=0
+		led_count++
+		if led_count>=6 then
+			led_count=0
+		end
+		time_led_on=0
+	end
+	if foundRed==TRUE then
+		led_count=0
+		time_led_on=0
+		counter3++
+		if counter3==CONFIRMED then	
+			state=BASIC_RED
+			counter3=0
+		end
+	elseif foundGreen==TRUE then
+		led_count=0
+		time_led_on=0
+		counter3++
+		if counter3==CONFIRMED then	
+			state=OPENED
+			counter3=0
+		end	
+	end
+
+#turn on leds 1,2 and 6,7 alternately and search for blue
+sub findDoor
+	if led_count&lt;=3 then
+		leds[1]=1
+		leds[2]=1
+	else
+		leds[6]=1
+		leds[7]=1
+	end
+	
+	if time_led_on&lt;5 then
+		time_led_on++
+	else
+		leds[1]=0
+		leds[2]=0
+		leds[6]=0
+		leds[7]=0
+		led_count++
+		if led_count+1>=7 then
+			led_count=0
+		end
+		time_led_on=0
+	end
+	if foundBlue==TRUE then
+		led_count=0
+		time_led_on=0
+		counter3++
+		if counter3==CONFIRMED then	
+			state=BASIC_NO_WAIT
+			counter3=0
+		end
+	end
+
+#turn on all leds alternately one by one and search for red, green or blue
+sub findAny
+	leds[led_count]=1
+	if time_led_on&lt;3 then
+		time_led_on++
+	else
+		leds[led_count]=0
+		led_count++
+		if led_count>=7 then
+			led_count=0
+		end
+		time_led_on=0
+	end
+	if foundBlue==TRUE then
+		led_count=0
+		time_led_on=0
+		counter3++
+		if counter3==CONFIRMED then	
+			state=BASIC_BLUE
+			counter3=0
+		end
+	elseif foundRed==TRUE then
+		led_count=0
+		time_led_on=0
+		counter3++
+		if counter3==CONFIRMED then	
+			state=BASIC_RED
+			counter3=0
+		end
+	elseif foundGreen==TRUE then
+		led_count=0
+		time_led_on=0
+		counter3++
+		if counter3==CONFIRMED then	
+			state=OPENED
+			counter3=0
+		end	
+	end
+
+#explore the arena, call corresponding subroutine to find specific color and turn on corresponding leds
+sub explorer
+	if state==FIND_SWITCH then
+		callsub findSwitch
+	elseif state==FIND_DOOR then
+		callsub findDoor
+	else
+		callsub findAny
+	end
+	proxRight = (4*prox[0] + 2*prox[1] + prox[2])/7
+	proxLeft = (4*prox[7] + 2*prox[6] + prox[5])/7	
+	if proxRight > proxLeft then
+		call math.muldiv(ds, S_INIT, proxRight, P_THRESH)
+	   	speed.right = S_INIT + ds
+	   	speed.left = S_INIT - ds
+	else
+		call math.muldiv(ds, S_INIT, proxLeft, P_THRESH)
+		speed.right = S_INIT - ds
+		speed.left = S_INIT + ds
+	end
+		
+sub stop
+	speed.left=STOP_SPEED
+	speed.right=STOP_SPEED
+	
+#pass the door using black strip on the floor	
+sub pass
+	counter2++
+	#wait until we manually open the door
+	if counter2>=COUNTER2_MAX then
+		mean=(v[0]+v[1]+v[2])/3	
+		if v[0]>zero_on and v[1]>one_out and v[2]>two_out then
+			#turn left
+			speed.right=PASS_FS
+			speed.left=PASS_SL
+			counter=0
+		elseif v[0]&lt;zero_out and v[1]>one_out and v[2]&lt;two_on then
+			#turn right
+		 	speed.left=PASS_FS
+		 	speed.right=PASS_SL
+		 	counter=0
+		elseif mean&lt;avg then
+			counter++
+			speed.left=PASS_FS
+			speed.right=PASS_FS
+		else 
+			speed.left=PASS_FS
+			speed.right=PASS_FS
+			counter=0
+		end
+	end
+	if counter>=COUNTER_MAX then
+		emit passed
+		state=EXPLORER
+		counter=0
+	end
+
+#rotate to avoid detecting the same green switch over and over again
+sub rotate
+	if rotation_count>=ROTATION_TIME then
+		smart=FALSE
+		state=EXPLORER
+		rotation_count=0
+	else
+		speed.left=STOP_SPEED
+		speed.right=SPEED_FRW
+		rotation_count++
+	end
+
+#inform others that they should find a switch
+sub wait_emit
+	emit find_switch
+	state=STOP_W
+
+#inform others that door is opened and that they should find a door
+sub opened_emit
+	emit opened
+	state=STOP_O		
+	
+#search only door	
+onevent find_door
+	if state==EXPLORER then
+		state=FIND_DOOR
+	end
+
+#search only switch
+onevent find_switch
+	if state==EXPLORER then	
+		state=FIND_SWITCH
+	end
+	
+#if waiting for door to be opened then pass, otherwise start searching only the door
+onevent opened
+	if state==STOP_W then
+			counter2=0
+			state=PASS
+	elseif state==EXPLORER then
+		state=FIND_DOOR
+	end	
+
+#if in front of green switch then rotate to avoid detecting it again, otherwise continue exploring the arena			
+onevent passed
+	if state==STOP_O then
+		if smart==TRUE then
+			state=ROTATE
+		else
+			state=EXPLORER
+		end
+	end
+
+#call corresponding subroutine depending on the state
+onevent ir_sensors
+	call ground.get_values(v)
+	if state==EXPLORER or state==FIND_SWITCH or state==FIND_DOOR then
+		callsub explorer
+	elseif state==BASIC_BLUE or state==BASIC_RED or state==BASIC_NO_WAIT then
+		callsub basiclove	
+	elseif state==WAITING then
+		callsub wait_emit
+	elseif state==STOP_W or state==STOP_O then
+		callsub stop
+	elseif state==PASS then
+		callsub pass
+	elseif state==OPENED then
+		callsub opened_emit
+	elseif state==ROTATE then
+		callsub rotate
+	end		
+	
+#color detection
+onevent camera
+	redMean=(cam.red[28]+cam.red[29]+cam.red[30]+cam.red[31]+cam.red[32])/5
+	greenMean=(cam.green[28]+cam.green[29]+cam.green[30]+cam.green[31]+cam.green[32])/5
+	blueMean=(cam.blue[28]+cam.blue[29]+cam.blue[30]+cam.blue[31]+cam.blue[32])/5
+	
+	if blueMean>(redMean+greenMean)/2 and (greenMean+blueMean+redMean)/3&lt;20 then
+			foundBlue=TRUE
+			leds[0]=1
+			leds[1]=1
+			leds[2]=0	
+			#reset other leds
+			leds[3]=0
+			leds[4]=0	
+			leds[5]=0
+			leds[6]=0
+			leds[7]=0
+	elseif redMean>(blueMean+greenMean)/2 and (greenMean+blueMean+redMean)/3&lt;20 then
+			foundRed=TRUE
+			leds[0]=1
+			leds[1]=0
+			leds[2]=0
+			#reset other leds
+			leds[3]=0
+			leds[4]=0	
+			leds[5]=0
+			leds[6]=0
+			leds[7]=0
+	elseif greenMean>(blueMean+redMean)/2 and (greenMean+blueMean+redMean)/3&lt;20 then
+			foundGreen=TRUE
+			smart=TRUE
+			leds[0]=1
+			leds[1]=1
+			leds[2]=1
+			#reset other leds
+			leds[3]=0
+			leds[4]=0	
+			leds[5]=0
+			leds[6]=0
+			leds[7]=0
+	elseif (greenMean+blueMean+redMean)/3>20 then
+			foundBlue=FALSE
+			foundGreen=FALSE
+			foundRed=FALSE
+			leds[0]=0
+			leds[1]=0
+			leds[2]=0
+	end</node>
+
+
+<!--node e-puck 1-->
+<node nodeId="1" name="e-puck 1"></node>
+
+
+</network>
