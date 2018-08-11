@@ -1,2 +1,2 @@
 # robotics
-Aseba project
+Aseba project using e-pucks
